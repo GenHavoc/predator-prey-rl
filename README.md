@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🦊 Predator-Prey Reinforcement Learning
+# Predator-Prey Reinforcement Learning
 
 ### A deep-dive into tabular MDPs, kernel methods, and policy gradient algorithms
 
@@ -256,7 +256,6 @@ graph TD
 
 <div align="center">
 
-**Built with 🧠 for reinforcement learning research**
 
 *Tabular MDPs × Sparse Kernels × Deep Policy Gradient*
 

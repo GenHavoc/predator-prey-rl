@@ -1,8 +1,8 @@
 <div align="center">
 
-# 🦊 Predator-Prey Reinforcement Learning
+# Predator-Prey Reinforcement Learning
 
-### A deep-dive into tabular MDPs, kernel methods, and policy gradient algorithms
+### From exact tabular solutions to deep policy gradient — a full RL pipeline on an N×N grid
 
 <br/>
 
@@ -13,110 +13,85 @@
 
 <br/>
 
-> **A full implementation suite for solving a Predator-Prey MDP on an N×N grid — from exact tabular methods (value/policy iteration) to deep policy gradient agents (REINFORCE with SGA and Adam), progressing through kernel estimation and model-free RL.**
+> **A complete reinforcement learning pipeline applied to a Predator-Prey game. Starts with exact tabular policy evaluation, progresses through sparse solvers and model-free kernel estimation, and culminates in a neural network policy trained with REINFORCE.**
 
 </div>
 
 ---
 
-## 📌 Table of Contents
+## The Problem
 
-<details open>
-<summary><b>Click to expand</b></summary>
+A predator chases prey on an N×N grid. The predator acts optimally; the prey moves randomly. The goal is to learn a policy that catches the prey as efficiently as possible.
 
-- [🎯 Problem Statement](#-problem-statement)
-- [📦 Project Structure](#-project-structure)
-- [🧩 Modules](#-modules)
-  - [Q1 — Dense Tabular Evaluation](#q1--dense-tabular-evaluation)
-  - [Q2 — Policy & Value Iteration (Sparse)](#q2--policy--value-iteration-sparse)
-  - [Q3 — Kernel Estimation from Samples](#q3--kernel-estimation-from-samples)
-  - [Q4 — Deep Policy Gradient (REINFORCE)](#q4--deep-policy-gradient-reinforce)
-- [🚀 Getting Started](#-getting-started)
-- [🏗️ Package Layout](#️-package-layout)
+| | |
+|---|---|
+| **State** | (predator position, prey position) → N⁴ states |
+| **Actions** | Stay, Up, Down, Left, Right → 5 actions |
+| **Reward** | +1 on catch, 0 otherwise |
+| **Prey** | Moves uniformly at random over valid neighbors |
+| **Discount γ** | 0.99 |
 
-</details>
+After a catch, the prey re-spawns at a random empty cell. Predator moves are deterministic and boundary-clamped.
 
 ---
 
-## 🎯 Problem Statement
+## Pipeline
 
-The **Predator-Prey MDP** is a classic reinforcement learning benchmark:
+```mermaid
+flowchart LR
+    A([Environment\nSimulator]) --> B[Transition Kernel\nP and R matrices]
+    B --> C[Exact Solvers\nValue & Policy Iteration]
+    B --> D[Model-Free\nKernel Estimation]
+    C --> E[Baseline\nOptimal Policy]
+    D --> E
+    E --> F[Policy Gradient\nREINFORCE]
+    F --> G([Neural Net Policy\nSGA vs Adam])
 
-- 🗺️ **Grid**: N × N board (default N = 4)
-- 🦊 **Predator**: Moves deterministically; 5 actions — Stay, Up, Down, Left, Right
-- 🐭 **Prey**: Moves stochastically — uniform random over valid adjacent cells
-- 🏆 **Reward**: `+1` when predator catches prey (same cell); `0` otherwise
-- 🔄 **Post-catch**: Prey re-spawns uniformly in any non-predator cell
-
-| Quantity | Formula | Size (N=4) |
-|----------|---------|------------|
-| State space \|S\| | N⁴ | 256 |
-| Action space \|A\| | 5 | 5 |
-| Discount factor γ | 0.99 | — |
-
----
-
-## 📦 Project Structure
-
-```
-predator-prey-rl/
-│
-├── predator_prey/              # 📚 Core Python package
-│   ├── env/                    # Environment dynamics
-│   │   ├── simulator.py        # One-step stochastic MDP simulator
-│   │   ├── state_space.py      # State encoding/decoding utilities
-│   │   ├── reward_function.py  # Expected reward matrix R [|S|×|A|]
-│   │   ├── transition_engine.py# Builds full transition kernel
-│   │   └── induced_reward.py   # Policy-induced reward vector r_π
-│   ├── core/                   # Evaluation & estimation tools
-│   │   ├── kernel.py           # Dense transition kernel P [|S|·|A|×|S|]
-│   │   ├── kernel_sparse.py    # Sparse kernel variant
-│   │   ├── induced_kernel.py   # Policy-induced kernel P_π
-│   │   ├── estimate_kernel.py  # Model-free kernel estimation (Q3)
-│   │   ├── q_value_eval.py     # Q-function evaluator Q^π
-│   │   ├── state_value_eval.py # State-value evaluator V^π
-│   │   └── gradient_estimate.py# REINFORCE gradient estimator (Q4)
-│   └── algorithms/             # RL algorithm implementations
-│       ├── value_iteration.py  # Value iteration solver
-│       ├── policy_iteration.py # Policy iteration solver
-│       ├── sample_policy.py    # Greedy-mix sample policy
-│       ├── policy_network.py   # PyTorch neural network policy
-│       ├── simple_sga.py       # Simple Stochastic Gradient Ascent
-│       └── run_adam.py         # Adam optimizer runner
-│
-├── scripts/                    # 🏃 Experiment runner scripts
-│   ├── run_q1.py               # Dense tabular evaluation + report
-│   ├── run_q2.py               # Sparse iteration + policy iteration
-│   ├── run_q3.py               # Kernel estimation experiment
-│   ├── run_q4.py               # Policy gradient training + report
-│   ├── generate_plots_q1.py    # Q1 plots: V^π vs N, runtimes
-│   ├── generate_plots_q2.py    # Q2 plots: convergence, policy comparison
-│   ├── generate_plots_q3.py    # Q3 plots: estimation error
-│   └── generate_plots_q4.py    # Q4 plots: SGA vs Adam learning curves
-│
-├── requirements.txt
-└── README.md
+    style A fill:#1a1a2e,color:#e0e0e0
+    style G fill:#16213e,color:#e0e0e0
+    style C fill:#0f3460,color:#e0e0e0
+    style D fill:#0f3460,color:#e0e0e0
+    style F fill:#533483,color:#e0e0e0
 ```
 
 ---
 
-## 🧩 Modules
+## Stage 1 — Environment
 
-### Q1 — Dense Tabular Evaluation
+`predator_prey/env/`
 
-Implements **exact policy evaluation** using dense NumPy matrices across grid sizes N ∈ {3, 4, 5, 6, 7}.
+The core simulator takes a state and action, samples the stochastic prey transition, and returns the next state and reward. Everything else in the pipeline is built on top of this.
 
-| Script | Description |
-|--------|-------------|
-| `env/simulator.py` | Stochastic MDP step function |
-| `env/state_space.py` | State/action encoding |
-| `env/reward_function.py` | Reward matrix R \[|S| × |A|\] |
-| `core/kernel.py` | Dense transition kernel P |
-| `core/q_value_eval.py` | Q-function Q^π from V^π |
-| `core/state_value_eval.py` | Iterative Bellman evaluation |
-| `algorithms/sample_policy.py` | ε-greedy mix policy |
+```python
+from predator_prey.env.simulator import simulator
 
-**Memory scaling of the dense kernel:**
+next_pred, next_prey, reward = simulator(N=4, pred_pos=(2,2), prey_pos=(4,4), action=1)
+```
+
+| Module | Role |
+|--------|------|
+| `simulator.py` | One-step stochastic MDP transition |
+| `state_space.py` | State/action encoding — maps (pred, prey) → flat index |
+| `reward_function.py` | Builds full expected reward matrix R \[|S| × |A|\] |
+| `transition_engine.py` | Constructs the transition kernel from simulator rollouts |
+| `induced_reward.py` | Computes policy-induced reward vector r_π |
+
+---
+
+## Stage 2 — Transition Kernel
+
+`predator_prey/core/`
+
+The transition kernel P maps (state, action) pairs to next-state distributions. We support two representations depending on grid size:
+
+<details>
+<summary><b>Dense kernel</b> — exact, fast for small N</summary>
+
+<br/>
+
+Shape: `(|S|·|A|, |S|)`. Stored as a dense `ndarray`. Analytically computed from the simulator dynamics.
+
+Memory scales as 5·N⁸·8 bytes:
 
 | N | \|S\| | Kernel RAM |
 |---|-------|-----------|
@@ -124,140 +99,209 @@ Implements **exact policy evaluation** using dense NumPy matrices across grid si
 | 6 | 1,296 | ~133 MB |
 | 7 | 2,401 | ~661 MB |
 
----
-
-### Q2 — Policy & Value Iteration (Sparse)
-
-Extends Q1 with **sparse matrix representations** and solves the MDP exactly using:
-- **Value Iteration** — Bellman optimality updates until convergence
-- **Policy Iteration** — Alternating policy evaluation + greedy improvement
-
-New modules: `core/kernel_sparse.py`, `algorithms/policy_iteration.py`, `algorithms/value_iteration.py`, `env/transition_engine.py`
-
----
-
-### Q3 — Kernel Estimation from Samples
-
-Implements **model-free kernel estimation**: approximates the transition kernel P from simulator samples using frequency counting — no model access beyond simulation.
-
-New module: `core/estimate_kernel.py`
-
----
-
-### Q4 — Deep Policy Gradient (REINFORCE)
-
-Trains a **neural network policy** using the REINFORCE algorithm with two optimizers:
-
-```
-Input  : 32-dim one-hot  (16-dim predator block | 16-dim prey block)
-Hidden : Linear(32→128) + ReLU → Linear(128→128) + ReLU
-Output : Linear(128→5) → Categorical distribution over actions
+```python
+from predator_prey.core.kernel import kernel
+P = kernel(N=5)  # shape: (|S|*|A|, |S|)
 ```
 
-**Gradient estimator** features:
-- Discounted returns: `G_t = r_t + γ·r_{t+1} + ...`
-- Baseline subtraction: `advantage = G_t − mean(G)`
-- Advantage normalisation: `advantage /= std(advantage)`
-- Gradient clipping: `clip_grad_norm_(params, 1.0)`
+</details>
 
-**Training hyperparameters:**
+<details>
+<summary><b>Sparse kernel</b> — scales to larger grids</summary>
+
+<br/>
+
+Same semantics, stored as a `scipy.sparse` matrix. Reduces memory by ~10-50× for typical grids.
+
+```python
+from predator_prey.core.kernel_sparse import kernel_sparse
+P = kernel_sparse(N=7)
+```
+
+</details>
+
+<details>
+<summary><b>Model-free estimation</b> — no analytical model</summary>
+
+<br/>
+
+Approximates P from simulator samples using frequency counting. No access to the true dynamics beyond the `simulator()` call.
+
+```python
+from predator_prey.core.estimate_kernel import estimate_kernel
+P_est = estimate_kernel(N=4, n_samples=50000)
+```
+
+Estimation error decreases as O(1/√n_samples). Useful for testing model-free algorithms where the true kernel is unavailable.
+
+</details>
+
+---
+
+## Stage 3 — Exact Solvers
+
+`predator_prey/algorithms/`
+
+With the kernel in hand, solve for the optimal policy exactly.
+
+<details>
+<summary><b>Value Iteration</b></summary>
+
+<br/>
+
+Applies Bellman optimality updates until convergence:
+
+```
+V_{k+1}(s) = max_a [ R(s,a) + γ · Σ_{s'} P(s'|s,a) · V_k(s') ]
+```
+
+```python
+from predator_prey.algorithms.value_iteration import value_iteration
+V_star, pi_star = value_iteration(P, R, gamma=0.99)
+```
+
+</details>
+
+<details>
+<summary><b>Policy Iteration</b></summary>
+
+<br/>
+
+Alternates between full policy evaluation (solve linear system) and greedy policy improvement. Converges in fewer iterations than VI at higher per-iteration cost.
+
+```python
+from predator_prey.algorithms.policy_iteration import policy_iteration
+pi_star = policy_iteration(P, R, gamma=0.99)
+```
+
+</details>
+
+---
+
+## Stage 4 — Policy Evaluation
+
+`predator_prey/core/`
+
+Given any policy π, evaluate it exactly:
+
+```python
+from predator_prey.core.state_value_eval import state_value_eval
+from predator_prey.core.q_value_eval import q_value_eval
+
+V = state_value_eval(Pi, P, R)   # shape: (|S|, 1)
+Q = q_value_eval(Pi, P, R)       # shape: (|S|, |A|)
+```
+
+Bellman evaluation iterates until `‖V_{k+1} - V_k‖∞ < 1e-8`.
+
+---
+
+## Stage 5 — Deep Policy Gradient (REINFORCE)
+
+`predator_prey/algorithms/` · `predator_prey/core/gradient_estimate.py`
+
+Instead of a tabular policy, learn a **neural network** policy end-to-end from interaction:
+
+```
+Input  : 32-dim one-hot — 16 dims predator position | 16 dims prey position
+Hidden : Linear(32 → 128) + ReLU
+Hidden : Linear(128 → 128) + ReLU
+Output : Linear(128 → 5) → Categorical distribution
+```
+
+The gradient estimator uses:
+- **Discounted returns** — `G_t = r_t + γ·r_{t+1} + ...`
+- **Baseline subtraction** — `advantage = G_t − mean(G)` (reduces variance)
+- **Advantage normalisation** — `advantage /= std(advantage)`
+- **Gradient clipping** — `clip_grad_norm_(params, 1.0)`
+
+Two optimizers are compared:
+
+| | Simple SGA | Adam |
+|---|---|---|
+| Update rule | `θ ← θ + α·∇J` | Adaptive moment estimates |
+| Learning rate | 0.005 | 0.003 |
+| Convergence | Slower, noisier | Faster, more stable |
+
+<details>
+<summary><b>Full hyperparameter table</b></summary>
 
 | Hyperparameter | Value |
 |----------------|-------|
-| Grid size (N) | 4 |
-| Discount (γ) | 0.99 |
-| Episodes per gradient | 20 |
+| Grid size N | 4 |
+| Discount γ | 0.99 |
+| Episodes per gradient estimate | 20 |
 | Max steps per episode | 50 |
-| Training iterations | 2000 |
-| LR — Simple SGA | 0.005 |
-| LR — Adam | 0.003 |
+| Training iterations | 2,000 |
 | Gradient clip norm | 1.0 |
+| EMA smoothing (plots) | 0.95 |
 | Random seed | 42 |
+
+</details>
 
 ---
 
-## 🚀 Getting Started
-
-### Prerequisites
+## Getting Started
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### Run Experiments
-
 ```bash
-# Q1: Dense tabular evaluation
-python scripts/generate_plots_q1.py    # Generate plots
-python scripts/run_q1.py               # Full report
+# Run the full tabular pipeline (dense)
+python scripts/generate_plots_q1.py
+python scripts/run_q1.py
 
-# Q2: Sparse value/policy iteration
+# Run with sparse kernel + exact solvers
 python scripts/generate_plots_q2.py
 python scripts/run_q2.py
 
-# Q3: Kernel estimation
+# Run model-free kernel estimation
 python scripts/generate_plots_q3.py
 python scripts/run_q3.py
 
-# Q4: Policy gradient (SGA vs Adam) — ~10-20 min on CPU
-python scripts/generate_plots_q4.py   # Saves learning_curves.png
-python scripts/run_q4.py              # Full report PDF
-```
-
-### Use the Package
-
-```python
-from predator_prey.env.simulator import simulator
-from predator_prey.core.kernel import kernel
-from predator_prey.env.reward_function import reward_function
-from predator_prey.core.state_value_eval import state_value_eval
-from predator_prey.algorithms.sample_policy import sample_policy
-
-N  = 4
-P  = kernel(N)              # Transition kernel
-R  = reward_function(N)     # Reward matrix
-Pi = sample_policy(N)       # Sample policy
-V  = state_value_eval(Pi, P, R)   # V^π
+# Train neural net policy — SGA vs Adam (~10-20 min on CPU)
+python scripts/generate_plots_q4.py   # → learning_curves.png
+python scripts/run_q4.py              # → report PDF
 ```
 
 ---
 
-## 🏗️ Package Layout
+## Package Layout
 
-```mermaid
-graph TD
-    A[predator_prey] --> B[env]
-    A --> C[core]
-    A --> D[algorithms]
+```
+predator_prey/
+├── env/
+│   ├── simulator.py
+│   ├── state_space.py
+│   ├── reward_function.py
+│   ├── transition_engine.py
+│   └── induced_reward.py
+├── core/
+│   ├── kernel.py
+│   ├── kernel_sparse.py
+│   ├── induced_kernel.py
+│   ├── estimate_kernel.py
+│   ├── q_value_eval.py
+│   ├── state_value_eval.py
+│   └── gradient_estimate.py
+└── algorithms/
+    ├── value_iteration.py
+    ├── policy_iteration.py
+    ├── sample_policy.py
+    ├── policy_network.py
+    ├── simple_sga.py
+    └── run_adam.py
 
-    B --> B1[simulator.py]
-    B --> B2[state_space.py]
-    B --> B3[reward_function.py]
-    B --> B4[transition_engine.py]
-
-    C --> C1[kernel.py / kernel_sparse.py]
-    C --> C2[q_value_eval.py]
-    C --> C3[state_value_eval.py]
-    C --> C4[gradient_estimate.py]
-    C --> C5[estimate_kernel.py]
-
-    D --> D1[value_iteration.py]
-    D --> D2[policy_iteration.py]
-    D --> D3[policy_network.py]
-    D --> D4[simple_sga.py / run_adam.py]
-
-    style A fill:#1a1a2e,color:#e0e0e0
-    style B fill:#0f3460,color:#e0e0e0
-    style C fill:#16213e,color:#e0e0e0
-    style D fill:#533483,color:#e0e0e0
+scripts/
+├── run_q{1..4}.py
+└── generate_plots_q{1..4}.py
 ```
 
 ---
 
 <div align="center">
 
-**Built with 🧠 for reinforcement learning research**
-
-*Tabular MDPs × Sparse Kernels × Deep Policy Gradient*
+**Tabular MDPs · Sparse Kernels · Deep Policy Gradient**
 
 </div>
